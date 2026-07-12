@@ -14,7 +14,6 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Files\Document;
-use Laravel\Ai\Responses\StructuredAgentResponse;
 use RuntimeException;
 use Throwable;
 
@@ -23,9 +22,10 @@ class ProcessStatement implements ShouldQueue
     use Queueable;
 
     /**
-     * The number of times the job may be attempted.
+     * The number of times the job may be attempted. No retries: an extraction
+     * failure is surfaced immediately instead of tying up the worker.
      */
-    public int $tries = 3;
+    public int $tries = 1;
 
     /**
      * The number of seconds the job can run before timing out. Kept above the
@@ -66,11 +66,7 @@ class ProcessStatement implements ShouldQueue
                 model: config('centavo.ai_model'),
             );
 
-            if (! $response instanceof StructuredAgentResponse) {
-                throw new RuntimeException('El extractor no devolvió una respuesta estructurada.');
-            }
-
-            $data = $response->toArray();
+            $data = $this->decodeJson((string) $response->text);
 
             DB::transaction(function () use ($data, $reconciler, $detector): void {
                 $this->persist($data);
@@ -92,6 +88,30 @@ class ProcessStatement implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * Decode the model's JSON reply into an array, tolerating any markdown
+     * fences or stray prose around the object.
+     *
+     * @return array<string, mixed>
+     */
+    private function decodeJson(string $text): array
+    {
+        $start = strpos($text, '{');
+        $end = strrpos($text, '}');
+
+        if ($start === false || $end === false || $end < $start) {
+            throw new RuntimeException('El extractor no devolvió un JSON válido.');
+        }
+
+        $data = json_decode(substr($text, $start, $end - $start + 1), true);
+
+        if (! is_array($data)) {
+            throw new RuntimeException('El extractor no devolvió un JSON válido.');
+        }
+
+        return $data;
     }
 
     /**

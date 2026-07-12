@@ -35,7 +35,7 @@ function wellsFargoFixture(): array
 
 it('extracts a statement and persists its header and transactions', function () {
     Storage::fake('local');
-    StatementExtractor::fake([wellsFargoFixture()]);
+    StatementExtractor::fake([json_encode(wellsFargoFixture())]);
 
     $statement = pendingStatement();
 
@@ -56,7 +56,7 @@ it('extracts a statement and persists its header and transactions', function () 
 
 it('stores every amount as a positive value with a normalized direction', function () {
     Storage::fake('local');
-    StatementExtractor::fake([wellsFargoFixture()]);
+    StatementExtractor::fake([json_encode(wellsFargoFixture())]);
 
     $statement = pendingStatement();
 
@@ -69,7 +69,7 @@ it('stores every amount as a positive value with a normalized direction', functi
 
 it('is idempotent when the job is retried', function () {
     Storage::fake('local');
-    StatementExtractor::fake([wellsFargoFixture(), wellsFargoFixture()]);
+    StatementExtractor::fake([json_encode(wellsFargoFixture()), json_encode(wellsFargoFixture())]);
 
     $statement = pendingStatement();
 

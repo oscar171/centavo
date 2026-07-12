@@ -2,12 +2,10 @@
 
 namespace App\Ai\Agents;
 
-use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxTokens;
 use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
-use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Stringable;
@@ -15,7 +13,7 @@ use Stringable;
 #[Provider(Lab::Anthropic)]
 #[MaxTokens(16384)]
 #[Timeout(300)]
-class StatementExtractor implements Agent, HasStructuredOutput
+class StatementExtractor implements Agent
 {
     use Promptable;
 
@@ -29,6 +27,10 @@ class StatementExtractor implements Agent, HasStructuredOutput
 
     /**
      * Get the instructions that the agent should follow.
+     *
+     * The response is plain JSON (parsed in ProcessStatement) rather than the
+     * provider's strict structured-output mode, whose grammar compilation times
+     * out on this schema.
      */
     public function instructions(): Stringable|string
     {
@@ -58,40 +60,33 @@ class StatementExtractor implements Agent, HasStructuredOutput
                 ."prefiere una de ellas cuando aplique en lugar de \"other\": {$list}.";
         }
 
-        return $instructions;
-    }
+        $instructions .= "\n\n".<<<'JSON'
+        Responde ÚNICAMENTE con un objeto JSON válido, sin markdown, sin ```, y sin texto antes o
+        después. Usa EXACTAMENTE esta forma:
+        {
+          "bank_name": string|null,
+          "account_last_four": string|null,
+          "period_start": "YYYY-MM-DD"|null,
+          "period_end": "YYYY-MM-DD"|null,
+          "beginning_balance": number|null,
+          "ending_balance": number|null,
+          "total_deposits": number|null,
+          "total_withdrawals": number|null,
+          "transactions": [
+            {
+              "date": "YYYY-MM-DD",
+              "description": string,
+              "amount": number,
+              "direction": "credit"|"debit",
+              "running_balance": number|null,
+              "reference": string|null,
+              "merchant": string|null,
+              "category": string
+            }
+          ]
+        }
+        JSON;
 
-    /**
-     * Get the agent's structured output schema definition.
-     *
-     * @return array<string, mixed>
-     */
-    public function schema(JsonSchema $schema): array
-    {
-        return [
-            'bank_name' => $schema->string()->nullable(),
-            'account_last_four' => $schema->string()->nullable(),
-            'period_start' => $schema->string()->nullable(), // YYYY-MM-DD
-            'period_end' => $schema->string()->nullable(),
-            'beginning_balance' => $schema->number()->nullable(),
-            'ending_balance' => $schema->number()->nullable(),
-            'total_deposits' => $schema->number()->nullable(),
-            'total_withdrawals' => $schema->number()->nullable(),
-            'transactions' => $schema->array()->items(
-                $schema->object(fn ($schema) => [
-                    'date' => $schema->string()->required(), // YYYY-MM-DD
-                    'description' => $schema->string()->required(),
-                    'amount' => $schema->number()->required(), // positivo
-                    'direction' => $schema->string()->enum(['credit', 'debit'])->required(),
-                    'running_balance' => $schema->number()->nullable(),
-                    'reference' => $schema->string()->nullable(),
-                    'merchant' => $schema->string()->nullable(),
-                    // Free string (not an enum): a large enum here makes
-                    // Anthropic's structured-output grammar compilation time
-                    // out. The allowed values are enforced via the prompt.
-                    'category' => $schema->string()->required(),
-                ])
-            )->required(),
-        ];
+        return $instructions;
     }
 }
