@@ -149,6 +149,12 @@ function MovementsTab({
     onSearchChange,
     categoryFilter,
     onCategoryFilterChange,
+    directionFilter,
+    onDirectionFilterChange,
+    minAmount,
+    onMinAmountChange,
+    maxAmount,
+    onMaxAmountChange,
     presentCategories,
     hasUncategorized,
     categoryOptions,
@@ -161,6 +167,12 @@ function MovementsTab({
     onSearchChange: (value: string) => void;
     categoryFilter: string;
     onCategoryFilterChange: (value: string) => void;
+    directionFilter: string;
+    onDirectionFilterChange: (value: string) => void;
+    minAmount: string;
+    onMinAmountChange: (value: string) => void;
+    maxAmount: string;
+    onMaxAmountChange: (value: string) => void;
     presentCategories: CategoryFilterOption[];
     hasUncategorized: boolean;
     categoryOptions: CategoryOption[];
@@ -169,39 +181,87 @@ function MovementsTab({
 }) {
     return (
         <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="relative w-full sm:max-w-xs">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="relative w-full sm:max-w-xs">
+                        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={search}
+                            onChange={(event) =>
+                                onSearchChange(event.target.value)
+                            }
+                            placeholder="Buscar por descripción o categoría"
+                            className="pl-9"
+                        />
+                    </div>
+                    <Select
+                        value={directionFilter}
+                        onValueChange={onDirectionFilterChange}
+                    >
+                        <SelectTrigger className="w-full sm:w-44">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los tipos</SelectItem>
+                            <SelectItem value="credit">Ingresos</SelectItem>
+                            <SelectItem value="debit">Egresos</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Select
+                        value={categoryFilter}
+                        onValueChange={onCategoryFilterChange}
+                    >
+                        <SelectTrigger className="w-full sm:w-56">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">
+                                Todas las categorías
+                            </SelectItem>
+                            {presentCategories.map((option) => (
+                                <SelectItem
+                                    key={option.value}
+                                    value={option.value}
+                                >
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                            {hasUncategorized && (
+                                <SelectItem value={UNCATEGORIZED}>
+                                    Sin categoría
+                                </SelectItem>
+                            )}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Monto</span>
                     <Input
-                        value={search}
-                        onChange={(event) => onSearchChange(event.target.value)}
-                        placeholder="Buscar por descripción o categoría"
-                        className="pl-9"
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        value={minAmount}
+                        onChange={(event) =>
+                            onMinAmountChange(event.target.value)
+                        }
+                        placeholder="Mín"
+                        className="w-28 tabular-nums"
+                    />
+                    <span className="text-muted-foreground">–</span>
+                    <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        value={maxAmount}
+                        onChange={(event) =>
+                            onMaxAmountChange(event.target.value)
+                        }
+                        placeholder="Máx"
+                        className="w-28 tabular-nums"
                     />
                 </div>
-                <Select
-                    value={categoryFilter}
-                    onValueChange={onCategoryFilterChange}
-                >
-                    <SelectTrigger className="w-full sm:w-56">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">
-                            Todas las categorías
-                        </SelectItem>
-                        {presentCategories.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                            </SelectItem>
-                        ))}
-                        {hasUncategorized && (
-                            <SelectItem value={UNCATEGORIZED}>
-                                Sin categoría
-                            </SelectItem>
-                        )}
-                    </SelectContent>
-                </Select>
             </div>
 
             <p className="text-xs text-muted-foreground tabular-nums">
@@ -550,6 +610,9 @@ export default function StatementShow({
     // Filter state is lifted here so the summary cards react to it too.
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
+    const [directionFilter, setDirectionFilter] = useState('all');
+    const [minAmount, setMinAmount] = useState('');
+    const [maxAmount, setMaxAmount] = useState('');
 
     const presentCategories = useMemo(() => {
         const map = new Map<string, string>();
@@ -572,6 +635,8 @@ export default function StatementShow({
 
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase();
+        const min = minAmount.trim() === '' ? null : Number(minAmount);
+        const max = maxAmount.trim() === '' ? null : Number(maxAmount);
 
         return transactions.filter((transaction) => {
             const matchesText =
@@ -588,9 +653,30 @@ export default function StatementShow({
                     ? transaction.category === null
                     : transaction.category === categoryFilter);
 
-            return matchesText && matchesCategory;
+            const matchesDirection =
+                directionFilter === 'all' ||
+                transaction.direction === directionFilter;
+
+            const amount = Number(transaction.amount);
+            const matchesAmount =
+                (min === null || Number.isNaN(min) || amount >= min) &&
+                (max === null || Number.isNaN(max) || amount <= max);
+
+            return (
+                matchesText &&
+                matchesCategory &&
+                matchesDirection &&
+                matchesAmount
+            );
         });
-    }, [transactions, search, categoryFilter]);
+    }, [
+        transactions,
+        search,
+        categoryFilter,
+        directionFilter,
+        minAmount,
+        maxAmount,
+    ]);
 
     // Totals are computed from the filtered movements, so the cards update live.
     const summary = useMemo(() => {
@@ -610,7 +696,12 @@ export default function StatementShow({
         return { deposits, withdrawals, net: deposits - withdrawals };
     }, [filtered]);
 
-    const isFiltering = search.trim() !== '' || categoryFilter !== 'all';
+    const isFiltering =
+        search.trim() !== '' ||
+        categoryFilter !== 'all' ||
+        directionFilter !== 'all' ||
+        minAmount.trim() !== '' ||
+        maxAmount.trim() !== '';
     const filterHint = isFiltering ? 'filtrado' : undefined;
 
     return (
@@ -771,6 +862,12 @@ export default function StatementShow({
                                 onSearchChange={setSearch}
                                 categoryFilter={categoryFilter}
                                 onCategoryFilterChange={setCategoryFilter}
+                                directionFilter={directionFilter}
+                                onDirectionFilterChange={setDirectionFilter}
+                                minAmount={minAmount}
+                                onMinAmountChange={setMinAmount}
+                                maxAmount={maxAmount}
+                                onMaxAmountChange={setMaxAmount}
                                 presentCategories={presentCategories}
                                 hasUncategorized={hasUncategorized}
                                 categoryOptions={categoryOptions}

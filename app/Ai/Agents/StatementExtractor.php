@@ -10,8 +10,12 @@ use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Stringable;
 
+// max_tokens is the ceiling for the model's reasoning + the JSON reply. Newer
+// Claude models spend part of this budget on internal thinking, so a low cap
+// truncates the JSON on long statements. It only bills for tokens actually
+// generated, so we set it high to fit even large statements.
 #[Provider(Lab::Anthropic)]
-#[MaxTokens(16384)]
+#[MaxTokens(64000)]
 #[Timeout(300)]
 class StatementExtractor implements Agent
 {
@@ -64,8 +68,6 @@ class StatementExtractor implements Agent
         Responde ÚNICAMENTE con un objeto JSON válido, sin markdown, sin ```, y sin texto antes o
         después. Usa EXACTAMENTE esta forma:
         {
-          "bank_name": string|null,
-          "account_last_four": string|null,
           "period_start": "YYYY-MM-DD"|null,
           "period_end": "YYYY-MM-DD"|null,
           "beginning_balance": number|null,
