@@ -14,8 +14,8 @@ use Laravel\Ai\Promptable;
 use Stringable;
 
 #[Provider(Lab::Anthropic)]
-#[MaxTokens(8192)]
-#[Timeout(120)]
+#[MaxTokens(16384)]
+#[Timeout(300)]
 class StatementExtractor implements Agent, HasStructuredOutput
 {
     use Promptable;

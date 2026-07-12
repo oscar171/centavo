@@ -28,9 +28,11 @@ class ProcessStatement implements ShouldQueue
     public int $tries = 3;
 
     /**
-     * The number of seconds the job can run before timing out.
+     * The number of seconds the job can run before timing out. Kept above the
+     * agent's HTTP timeout (300s) so a slow extraction fails cleanly through the
+     * try/catch instead of the worker killing the whole job.
      */
-    public int $timeout = 180;
+    public int $timeout = 360;
 
     /**
      * Create a new job instance.
