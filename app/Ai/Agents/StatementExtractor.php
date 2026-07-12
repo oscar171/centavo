@@ -2,7 +2,6 @@
 
 namespace App\Ai\Agents;
 
-use App\Enums\TransactionCategory;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxTokens;
 use Laravel\Ai\Attributes\Provider;
@@ -87,23 +86,12 @@ class StatementExtractor implements Agent, HasStructuredOutput
                     'running_balance' => $schema->number()->nullable(),
                     'reference' => $schema->string()->nullable(),
                     'merchant' => $schema->string()->nullable(),
-                    'category' => $schema->string()->enum($this->allowedCategories())->required(),
+                    // Free string (not an enum): a large enum here makes
+                    // Anthropic's structured-output grammar compilation time
+                    // out. The allowed values are enforced via the prompt.
+                    'category' => $schema->string()->required(),
                 ])
             )->required(),
         ];
-    }
-
-    /**
-     * The category values the AI may choose from: the predefined catalog plus
-     * any custom categories the user has already created.
-     *
-     * @return array<int, string>
-     */
-    private function allowedCategories(): array
-    {
-        return array_values(array_unique(array_merge(
-            TransactionCategory::values(),
-            array_filter($this->customCategories, fn (string $category): bool => $category !== ''),
-        )));
     }
 }
