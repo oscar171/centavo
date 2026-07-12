@@ -31,6 +31,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('statements/{statement}', [StatementController::class, 'show'])
         ->name('statements.show');
+
+    Route::delete('statements/{statement}', [StatementController::class, 'destroy'])
+        ->name('statements.destroy');
 });
 
 require __DIR__.'/settings.php';

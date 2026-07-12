@@ -42,7 +42,6 @@ type Statement = {
     status_label: string;
     is_reconciled: boolean;
     reconciliation_diff: string | null;
-    failure_reason: string | null;
     period_start: string | null;
     period_end: string | null;
     beginning_balance: string | null;
@@ -642,11 +641,10 @@ export default function StatementShow({
                                 <p className="font-medium">
                                     No se pudo procesar el estado de cuenta.
                                 </p>
-                                {statement.failure_reason && (
-                                    <p className="text-destructive/80">
-                                        {statement.failure_reason}
-                                    </p>
-                                )}
+                                <p className="text-destructive/80">
+                                    Revisa que el archivo sea un estado de
+                                    cuenta en PDF legible y vuelve a intentarlo.
+                                </p>
                             </div>
                         </div>
                         <div className="shrink-0">

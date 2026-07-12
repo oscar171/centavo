@@ -3,6 +3,7 @@ import { FileText, Plus, Upload, Wallet } from 'lucide-react';
 import { useRef, useState } from 'react';
 import StatementController from '@/actions/App/Http/Controllers/StatementController';
 import CreateAccountDialog from '@/components/create-account-dialog';
+import DeleteStatementDialog from '@/components/delete-statement-dialog';
 import InputError from '@/components/input-error';
 import PageHeader from '@/components/page-header';
 import StatementStatusBadge from '@/components/statement-status-badge';
@@ -285,46 +286,54 @@ export default function StatementsCreate({
                     ) : (
                         <div className="space-y-2">
                             {statements.map((statement) => (
-                                <Link
+                                <Card
                                     key={statement.uuid}
-                                    href={StatementController.show(
-                                        statement.uuid,
-                                    )}
-                                    className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="transition-colors hover:border-foreground/20"
                                 >
-                                    <Card className="transition-colors hover:border-foreground/20">
-                                        <CardContent className="flex items-center justify-between gap-4 py-4">
-                                            <div className="flex min-w-0 items-center gap-3">
-                                                <FileText className="size-5 shrink-0 text-muted-foreground" />
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="truncate font-medium">
-                                                            {
-                                                                statement.original_filename
-                                                            }
-                                                        </p>
-                                                        <Badge
-                                                            variant="secondary"
-                                                            className="shrink-0"
-                                                        >
-                                                            {statement.bank}
-                                                        </Badge>
-                                                    </div>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {statement.period_start &&
-                                                        statement.period_end
-                                                            ? `${formatDate(statement.period_start)} — ${formatDate(statement.period_end)} · ${statement.account_name}`
-                                                            : statement.account_name}
+                                    <CardContent className="flex items-center justify-between gap-4 py-4">
+                                        <Link
+                                            href={StatementController.show(
+                                                statement.uuid,
+                                            )}
+                                            className="flex min-w-0 flex-1 items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        >
+                                            <FileText className="size-5 shrink-0 text-muted-foreground" />
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="truncate font-medium">
+                                                        {
+                                                            statement.original_filename
+                                                        }
                                                     </p>
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className="shrink-0"
+                                                    >
+                                                        {statement.bank}
+                                                    </Badge>
                                                 </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {statement.period_start &&
+                                                    statement.period_end
+                                                        ? `${formatDate(statement.period_start)} — ${formatDate(statement.period_end)} · ${statement.account_name}`
+                                                        : statement.account_name}
+                                                </p>
                                             </div>
+                                        </Link>
+                                        <div className="flex shrink-0 items-center gap-1.5">
                                             <StatementStatusBadge
                                                 status={statement.status}
                                                 label={statement.status_label}
                                             />
-                                        </CardContent>
-                                    </Card>
-                                </Link>
+                                            <DeleteStatementDialog
+                                                statementId={statement.uuid}
+                                                filename={
+                                                    statement.original_filename
+                                                }
+                                            />
+                                        </div>
+                                    </CardContent>
+                                </Card>
                             ))}
                         </div>
                     )}

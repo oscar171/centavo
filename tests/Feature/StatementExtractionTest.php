@@ -79,6 +79,20 @@ it('is idempotent when the job is retried', function () {
     expect($statement->transactions()->count())->toBe(57);
 });
 
+it('tells the extractor about the users custom categories', function () {
+    $extractor = new StatementExtractor(['Mascotas', 'Donaciones']);
+
+    expect((string) $extractor->instructions())
+        ->toContain('personalizadas')
+        ->toContain('Mascotas')
+        ->toContain('Donaciones');
+});
+
+it('omits the custom category section when the user has none', function () {
+    expect((string) (new StatementExtractor)->instructions())
+        ->not->toContain('personalizadas');
+});
+
 it('marks the statement as failed when extraction throws', function () {
     Storage::fake('local');
     StatementExtractor::fake(function () {

@@ -132,7 +132,6 @@ class StatementController extends Controller
                 'status_label' => $statement->status->label(),
                 'is_reconciled' => $statement->is_reconciled,
                 'reconciliation_diff' => $statement->reconciliation_diff,
-                'failure_reason' => $statement->failure_reason,
                 'period_start' => $statement->period_start?->toDateString(),
                 'period_end' => $statement->period_end?->toDateString(),
                 'beginning_balance' => $statement->beginning_balance,
@@ -170,6 +169,26 @@ class StatementController extends Controller
                 'amount' => $anomaly->amount,
             ]),
         ]);
+    }
+
+    /**
+     * Delete a statement along with its extracted data. The transactions and
+     * anomalies are removed by the database foreign-key cascade; here we also
+     * drop the stored PDF from disk.
+     */
+    public function destroy(Statement $statement): RedirectResponse
+    {
+        $this->authorize('delete', $statement);
+
+        if ($statement->file_path) {
+            Storage::disk('local')->delete($statement->file_path);
+        }
+
+        $statement->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Estado de cuenta eliminado.')]);
+
+        return to_route('statements.create');
     }
 
     /**

@@ -4,7 +4,9 @@ namespace App\Jobs;
 
 use App\Ai\Agents\StatementExtractor;
 use App\Enums\StatementStatus;
+use App\Enums\TransactionCategory;
 use App\Models\Statement;
+use App\Models\Transaction;
 use App\Services\AnomalyDetector;
 use App\Services\StatementReconciler;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -54,7 +56,7 @@ class ProcessStatement implements ShouldQueue
         $this->statement->update(['status' => StatementStatus::Processing]);
 
         try {
-            $response = (new StatementExtractor)->prompt(
+            $response = (new StatementExtractor($this->customCategories()))->prompt(
                 'Extrae todos los datos y movimientos de este estado de cuenta.',
                 attachments: [
                     Document::fromStorage($this->statement->file_path, disk: 'local'),
@@ -88,6 +90,26 @@ class ProcessStatement implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * The custom category names the statement owner has already created, so the
+     * AI can reuse them when classifying. This job runs without an authenticated
+     * user, so it filters by the owner explicitly instead of via the global
+     * scope.
+     *
+     * @return array<int, string>
+     */
+    private function customCategories(): array
+    {
+        return Transaction::query()
+            ->whereRelation('account', 'user_id', $this->statement->account->user_id)
+            ->whereNotNull('category')
+            ->distinct()
+            ->pluck('category')
+            ->reject(fn (string $category): bool => TransactionCategory::tryFrom($category) !== null)
+            ->values()
+            ->all();
     }
 
     /**

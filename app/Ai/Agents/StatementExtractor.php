@@ -21,11 +21,19 @@ class StatementExtractor implements Agent, HasStructuredOutput
     use Promptable;
 
     /**
+     * @param  array<int, string>  $customCategories  Category names the user has
+     *                                                already created, so the AI
+     *                                                can reuse them instead of
+     *                                                falling back to "other".
+     */
+    public function __construct(private array $customCategories = []) {}
+
+    /**
      * Get the instructions that the agent should follow.
      */
     public function instructions(): Stringable|string
     {
-        return <<<'PROMPT'
+        $instructions = <<<'PROMPT'
         Eres un experto en extraer datos de estados de cuenta bancarios (bank statements) en PDF.
         Extrae la información EXACTA que aparece en el documento. Reglas:
         - NO inventes ni calcules valores. Si un dato no aparece, devuélvelo como null.
@@ -44,6 +52,14 @@ class StatementExtractor implements Agent, HasStructuredOutput
         - Incluye TODAS las transacciones, incluidas devoluciones ("Purchase Return"),
           reversos ("Reversal") y créditos provisionales ("Provisional Credit").
         PROMPT;
+
+        if ($this->customCategories !== []) {
+            $list = implode(', ', $this->customCategories);
+            $instructions .= "\n- El usuario también creó estas categorías personalizadas; "
+                ."prefiere una de ellas cuando aplique en lugar de \"other\": {$list}.";
+        }
+
+        return $instructions;
     }
 
     /**
@@ -71,9 +87,23 @@ class StatementExtractor implements Agent, HasStructuredOutput
                     'running_balance' => $schema->number()->nullable(),
                     'reference' => $schema->string()->nullable(),
                     'merchant' => $schema->string()->nullable(),
-                    'category' => $schema->string()->enum(TransactionCategory::values())->nullable(),
+                    'category' => $schema->string()->enum($this->allowedCategories())->required(),
                 ])
             )->required(),
         ];
+    }
+
+    /**
+     * The category values the AI may choose from: the predefined catalog plus
+     * any custom categories the user has already created.
+     *
+     * @return array<int, string>
+     */
+    private function allowedCategories(): array
+    {
+        return array_values(array_unique(array_merge(
+            TransactionCategory::values(),
+            array_filter($this->customCategories, fn (string $category): bool => $category !== ''),
+        )));
     }
 }

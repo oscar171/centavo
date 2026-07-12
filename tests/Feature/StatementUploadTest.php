@@ -3,7 +3,9 @@
 use App\Enums\StatementStatus;
 use App\Jobs\ProcessStatement;
 use App\Models\Account;
+use App\Models\Anomaly;
 use App\Models\Statement;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -175,6 +177,43 @@ it('prevents reprocessing another users statement', function () {
         ->assertNotFound();
 
     Queue::assertNothingPushed();
+});
+
+it('deletes a statement and its extracted data', function () {
+    Storage::fake('local');
+
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $statement = Statement::factory()->for($account)->create([
+        'file_path' => 'statements/keep.pdf',
+    ]);
+    Storage::disk('local')->put('statements/keep.pdf', 'pdf');
+
+    Transaction::factory()->for($statement)->for($account)->count(3)->create();
+    Anomaly::factory()->for($statement)->for($account)->create();
+
+    $this->actingAs($user)
+        ->from(route('statements.create'))
+        ->delete(route('statements.destroy', $statement))
+        ->assertRedirect(route('statements.create'));
+
+    $this->assertDatabaseMissing('statements', ['id' => $statement->id]);
+    $this->assertDatabaseCount('transactions', 0);
+    $this->assertDatabaseCount('anomalies', 0);
+    Storage::disk('local')->assertMissing('statements/keep.pdf');
+});
+
+it('prevents deleting another users statement', function () {
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+    $account = Account::factory()->for($other)->create();
+    $statement = Statement::factory()->for($account)->create();
+
+    $this->actingAs($user)
+        ->delete(route('statements.destroy', $statement))
+        ->assertNotFound();
+
+    $this->assertDatabaseHas('statements', ['id' => $statement->id]);
 });
 
 it('shows the standalone upload page with the user accounts', function () {
