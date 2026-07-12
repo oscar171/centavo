@@ -7,9 +7,9 @@ type Props = {
 };
 
 /**
- * Renders a statement status badge following the Centavo design tokens:
- * processed → brand (green), needs_review → amber, failed → destructive,
- * pending/processing → secondary with a spinner.
+ * Renders a statement status badge, color-coded by state:
+ * processed → brand (green), needs_review → amber, failed → destructive (red),
+ * pending/processing → blue with a spinner.
  */
 export default function StatementStatusBadge({ status, label }: Props) {
     if (status === 'processed') {
@@ -32,8 +32,9 @@ export default function StatementStatusBadge({ status, label }: Props) {
         return <Badge variant="destructive">{label}</Badge>;
     }
 
+    // pending / processing
     return (
-        <Badge variant="secondary" className="gap-1.5">
+        <Badge className="gap-1.5 border-transparent bg-blue-500/10 text-blue-600 dark:text-blue-400">
             <Spinner className="size-3" />
             {label}
         </Badge>
