@@ -7,6 +7,7 @@ use App\Jobs\ProcessStatement;
 use App\Models\Account;
 use App\Models\Statement;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -91,6 +92,24 @@ it('tells the extractor about the users custom categories', function () {
 it('omits the custom category section when the user has none', function () {
     expect((string) (new StatementExtractor)->instructions())
         ->not->toContain('personalizadas');
+});
+
+it('logs the raw reply and fails when the extractor returns non-JSON', function () {
+    Storage::fake('local');
+    Log::spy();
+    StatementExtractor::fake(['Lo siento, no pude leer este PDF.']);
+
+    $statement = pendingStatement();
+
+    expect(fn () => ProcessStatement::dispatchSync($statement))
+        ->toThrow(RuntimeException::class);
+
+    expect($statement->fresh()->status)->toBe(StatementStatus::Failed);
+
+    Log::shouldHaveReceived('error')->withArgs(
+        fn (string $message, array $context): bool => str_contains($message, 'no se pudo parsear')
+            && $context['raw_response'] === 'Lo siento, no pude leer este PDF.'
+    );
 });
 
 it('marks the statement as failed when extraction throws', function () {

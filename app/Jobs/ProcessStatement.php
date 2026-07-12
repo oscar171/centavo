@@ -12,6 +12,7 @@ use App\Services\StatementReconciler;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Files\Document;
 use RuntimeException;
@@ -101,13 +102,21 @@ class ProcessStatement implements ShouldQueue
         $start = strpos($text, '{');
         $end = strrpos($text, '}');
 
-        if ($start === false || $end === false || $end < $start) {
-            throw new RuntimeException('El extractor no devolvió un JSON válido.');
-        }
-
-        $data = json_decode(substr($text, $start, $end - $start + 1), true);
+        $data = ($start !== false && $end !== false && $end >= $start)
+            ? json_decode(substr($text, $start, $end - $start + 1), true)
+            : null;
 
         if (! is_array($data)) {
+            // Log the full raw reply so we can inspect what the model actually
+            // returned when parsing fails (truncation, preamble, trailing
+            // commas, etc.). Internal only; the client sees a generic message.
+            Log::error('StatementExtractor: no se pudo parsear la respuesta de la IA.', [
+                'statement_id' => $this->statement->id,
+                'response_length' => mb_strlen($text),
+                'json_error' => json_last_error_msg(),
+                'raw_response' => $text,
+            ]);
+
             throw new RuntimeException('El extractor no devolvió un JSON válido.');
         }
 
