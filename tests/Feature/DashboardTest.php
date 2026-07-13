@@ -48,7 +48,6 @@ it('defers the heavy dashboard widgets on the initial load', function () {
             ->has('summary')
             ->has('currentBalance')
             ->missing('monthly')
-            ->missing('spendingByMerchant')
             ->missing('spendingByCategory')
             ->missing('recentStatements')
         );
@@ -72,7 +71,7 @@ it('reports the current balance from the latest statement per account', function
         ->assertInertia(fn ($page) => $page->where('currentBalance', 1500));
 });
 
-it('breaks down spending by category with custom categories (deferred)', function () {
+it('breaks down spending by category over time with custom categories (deferred)', function () {
     $user = User::factory()->create();
     $account = Account::factory()->for($user)->create();
     $statement = Statement::factory()->for($account)->create();
@@ -85,35 +84,12 @@ it('breaks down spending by category with custom categories (deferred)', functio
         ->get(route('dashboard'))
         ->assertInertia(fn ($page) => $page
             ->loadDeferredProps('charts', fn ($reload) => $reload
-                ->has('spendingByCategory', 2)
-                ->where('spendingByCategory.0.label', 'Mascotas')
-                ->where('spendingByCategory.0.total', 1000)
-                ->where('spendingByCategory.1.label', 'Comida')
-                ->where('spendingByCategory.1.total', 800)
-            )
-        );
-});
-
-it('ranks spending by merchant descending (deferred)', function () {
-    $user = User::factory()->create();
-    $account = Account::factory()->for($user)->create();
-    $statement = Statement::factory()->for($account)->create();
-
-    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 500.00, 'merchant' => 'Amazon']);
-    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 500.00, 'merchant' => 'Amazon']);
-    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 300.00, 'merchant' => 'Uber']);
-
-    $this->actingAs($user)
-        ->get(route('dashboard'))
-        ->assertInertia(fn ($page) => $page
-            ->component('dashboard')
-            ->loadDeferredProps('charts', fn ($reload) => $reload
-                ->has('spendingByMerchant.merchants', 2)
-                ->where('spendingByMerchant.merchants.0.name', 'Amazon')
-                ->where('spendingByMerchant.merchants.0.total', 1000)
-                ->where('spendingByMerchant.merchants.0.key', 'm0')
-                ->where('spendingByMerchant.merchants.1.name', 'Uber')
-                ->has('spendingByMerchant.series')
+                ->has('spendingByCategory.categories', 2)
+                ->where('spendingByCategory.categories.0.name', 'Mascotas')
+                ->where('spendingByCategory.categories.0.total', 1000)
+                ->where('spendingByCategory.categories.1.name', 'Comida')
+                ->where('spendingByCategory.categories.1.total', 800)
+                ->has('spendingByCategory.series')
             )
         );
 });

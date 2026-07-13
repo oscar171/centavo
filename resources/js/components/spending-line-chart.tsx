@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import { formatCompactCurrency, formatCurrency } from '@/lib/format';
 
-type MerchantLine = { key: string; name: string; total: number };
+type ChartLine = { key: string; name: string };
 
 type SeriesPoint = { month: string; label: string } & Record<string, number>;
 
@@ -75,21 +75,25 @@ function ChartTooltip({
 }
 
 /**
- * Multi-line chart of spending per merchant over time. Each top merchant gets
- * its own line so the user can track how a merchant's spend evolves across the
- * period; the long tail is grouped server-side into an "Otros" line.
+ * Multi-line chart of spending per category over time. Each top category gets
+ * its own line so the user can track how a category's spend evolves across the
+ * period; the long tail is grouped server-side into an "Otras" line. An optional
+ * per-line color map keeps category colors consistent with the rest of the app;
+ * otherwise a default palette is used by position.
  */
 export default function SpendingLineChart({
-    merchants,
+    lines,
     series,
     currency,
+    colors,
 }: {
-    merchants: MerchantLine[];
+    lines: ChartLine[];
     series: SeriesPoint[];
     currency: string;
+    colors?: Record<string, string>;
 }) {
     const names: Record<string, string> = Object.fromEntries(
-        merchants.map((merchant) => [merchant.key, merchant.name] as const),
+        lines.map((line) => [line.key, line.name] as const),
     );
 
     return (
@@ -128,22 +132,23 @@ export default function SpendingLineChart({
                     wrapperStyle={{ fontSize: 12 }}
                     formatter={(value) => names[String(value)] ?? value}
                 />
-                {merchants.map((merchant, index) => (
-                    <Line
-                        key={merchant.key}
-                        type="monotone"
-                        dataKey={merchant.key}
-                        name={merchant.key}
-                        stroke={COLORS[index % COLORS.length]}
-                        strokeWidth={2}
-                        dot={{
-                            r: 3,
-                            fill: COLORS[index % COLORS.length],
-                            strokeWidth: 0,
-                        }}
-                        activeDot={{ r: 5 }}
-                    />
-                ))}
+                {lines.map((line, index) => {
+                    const color =
+                        colors?.[line.key] ?? COLORS[index % COLORS.length];
+
+                    return (
+                        <Line
+                            key={line.key}
+                            type="monotone"
+                            dataKey={line.key}
+                            name={line.key}
+                            stroke={color}
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: color, strokeWidth: 0 }}
+                            activeDot={{ r: 5 }}
+                        />
+                    );
+                })}
             </LineChart>
         </ResponsiveContainer>
     );

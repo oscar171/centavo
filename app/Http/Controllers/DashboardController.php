@@ -30,10 +30,10 @@ class DashboardController extends Controller
     private const DEFAULT_RANGE = '12m';
 
     /**
-     * How many merchants get their own line before the tail is folded into an
-     * "Otros" series.
+     * How many categories get their own line before the tail is folded into an
+     * "Otras" series.
      */
-    private const MERCHANT_LINES = 6;
+    private const CATEGORY_LINES = 6;
 
     /**
      * Show the dashboard: filter controls and headline KPIs load immediately,
@@ -93,7 +93,6 @@ class DashboardController extends Controller
             'summaryChange' => $summaryChange,
             'currentBalance' => $this->currentBalance($scopeIds),
             'monthly' => Inertia::defer(fn (): array => $this->monthlySeries($scopeIds, $from, $to), 'charts'),
-            'spendingByMerchant' => Inertia::defer(fn (): array => $this->spendingByMerchant($scopeIds, $from, $to), 'charts'),
             'spendingByCategory' => Inertia::defer(fn (): array => $this->spendingByCategory($scopeIds, $from, $to), 'charts'),
             'recentStatements' => Inertia::defer(fn (): array => $this->recentStatements($scopeIds, $from, $to), 'activity'),
         ]);
@@ -223,65 +222,74 @@ class DashboardController extends Controller
     }
 
     /**
-     * Spending per merchant across each month in the window, shaped for a
-     * multi-line time series. Only the top merchants get their own line; the
-     * long tail is folded into an "Otros" series so the chart stays readable.
+     * Spending per category across each month in the window, shaped for a
+     * multi-line time series. Only the top categories get their own line; the
+     * long tail is folded into an "Otras" series so the chart stays readable.
+     * Custom categories are kept as-is; predefined ones are localized. The raw
+     * category value travels with each line so the client can color it.
      *
      * @param  array<int, int>  $scopeIds
      * @return array{
-     *     merchants: array<int, array{key: string, name: string, total: float}>,
+     *     categories: array<int, array{key: string, value: string|null, name: string, total: float}>,
      *     series: array<int, array<string, float|string>>
      * }
      */
-    private function spendingByMerchant(array $scopeIds, Carbon $from, Carbon $to): array
+    private function spendingByCategory(array $scopeIds, Carbon $from, Carbon $to): array
     {
         $rows = Transaction::query()
             ->whereIn('account_id', $scopeIds)
             ->where('direction', TransactionDirection::Debit)
-            ->whereNotNull('merchant')
             ->where('date', '>=', $from->toDateString())
             ->where('date', '<=', $to->toDateString())
-            ->get(['date', 'amount', 'merchant']);
+            ->get(['date', 'amount', 'category']);
 
         if ($rows->isEmpty()) {
-            return ['merchants' => [], 'series' => []];
+            return ['categories' => [], 'series' => []];
         }
 
-        // Rank merchants by total spend to decide which get their own line.
+        // Rank categories by total spend to decide which get their own line.
+        // The empty-string key holds uncategorized spend.
         $totals = [];
+        $valueFor = [];
 
         foreach ($rows as $row) {
-            $name = (string) $row->merchant;
-            $totals[$name] = ($totals[$name] ?? 0.0) + (float) $row->amount;
+            $catKey = $row->category ?? '';
+            $totals[$catKey] = ($totals[$catKey] ?? 0.0) + (float) $row->amount;
+            $valueFor[$catKey] = $row->category;
         }
 
         arsort($totals);
 
-        $topNames = array_slice(array_keys($totals), 0, self::MERCHANT_LINES);
-        $hasOther = count($totals) > self::MERCHANT_LINES;
+        $topKeys = array_slice(array_keys($totals), 0, self::CATEGORY_LINES);
+        $hasOther = count($totals) > self::CATEGORY_LINES;
 
-        // Assign a stable, dot-free key to each merchant (names may contain
-        // dots, which recharts would treat as nested-path accessors).
+        // Assign a stable, dot-free series key to each category (custom names may
+        // contain dots, which recharts would treat as nested-path accessors).
         /** @var array<string, string> $keyFor */
         $keyFor = [];
-        $merchants = [];
+        $categories = [];
 
-        foreach ($topNames as $index => $name) {
-            $key = 'm'.$index;
-            $keyFor[$name] = $key;
-            $merchants[] = ['key' => $key, 'name' => $name, 'total' => round($totals[$name], 2)];
+        foreach ($topKeys as $index => $catKey) {
+            $key = 'c'.$index;
+            $keyFor[$catKey] = $key;
+            $categories[] = [
+                'key' => $key,
+                'value' => $valueFor[$catKey],
+                'name' => TransactionCategory::labelFor($valueFor[$catKey]) ?? 'Sin categoría',
+                'total' => round($totals[$catKey], 2),
+            ];
         }
 
         if ($hasOther) {
             $otherTotal = 0.0;
 
-            foreach ($totals as $name => $total) {
-                if (! array_key_exists($name, $keyFor)) {
+            foreach ($totals as $catKey => $total) {
+                if (! array_key_exists($catKey, $keyFor)) {
                     $otherTotal += $total;
                 }
             }
 
-            $merchants[] = ['key' => 'other', 'name' => 'Otros', 'total' => round($otherTotal, 2)];
+            $categories[] = ['key' => 'other', 'value' => null, 'name' => 'Otras', 'total' => round($otherTotal, 2)];
         }
 
         // Accumulate spend per month per series key.
@@ -289,11 +297,11 @@ class DashboardController extends Controller
 
         foreach ($rows as $row) {
             $monthKey = $row->date->format('Y-m');
-            $seriesKey = $keyFor[(string) $row->merchant] ?? 'other';
+            $seriesKey = $keyFor[$row->category ?? ''] ?? 'other';
             $byMonth[$monthKey][$seriesKey] = ($byMonth[$monthKey][$seriesKey] ?? 0.0) + (float) $row->amount;
         }
 
-        $seriesKeys = array_map(fn (array $merchant): string => $merchant['key'], $merchants);
+        $seriesKeys = array_map(fn (array $category): string => $category['key'], $categories);
 
         $series = array_map(function (array $bucket) use ($byMonth, $seriesKeys): array {
             $point = ['month' => $bucket['month'], 'label' => $bucket['label']];
@@ -305,47 +313,7 @@ class DashboardController extends Controller
             return $point;
         }, $this->monthBuckets(array_keys($byMonth)));
 
-        return ['merchants' => $merchants, 'series' => $series];
-    }
-
-    /**
-     * Total expense per category within the window, ranked highest first. Custom
-     * categories the user created are kept as-is (their raw name is the label);
-     * predefined categories are localized. This is the category-aware companion
-     * to the merchant breakdown.
-     *
-     * @param  array<int, int>  $scopeIds
-     * @return array<int, array{value: string|null, label: string, total: float, count: int}>
-     */
-    private function spendingByCategory(array $scopeIds, Carbon $from, Carbon $to): array
-    {
-        $rows = Transaction::query()
-            ->whereIn('account_id', $scopeIds)
-            ->where('direction', TransactionDirection::Debit)
-            ->where('date', '>=', $from->toDateString())
-            ->where('date', '<=', $to->toDateString())
-            ->get(['amount', 'category']);
-
-        /** @var array<string, array{value: string|null, total: float, count: int}> $totals */
-        $totals = [];
-
-        foreach ($rows as $row) {
-            $key = $row->category ?? '';
-            $totals[$key] ??= ['value' => $row->category, 'total' => 0.0, 'count' => 0];
-            $totals[$key]['total'] += (float) $row->amount;
-            $totals[$key]['count']++;
-        }
-
-        $result = array_map(fn (array $entry): array => [
-            'value' => $entry['value'],
-            'label' => TransactionCategory::labelFor($entry['value']) ?? 'Sin categoría',
-            'total' => round($entry['total'], 2),
-            'count' => $entry['count'],
-        ], array_values($totals));
-
-        usort($result, fn (array $a, array $b): int => $b['total'] <=> $a['total']);
-
-        return $result;
+        return ['categories' => $categories, 'series' => $series];
     }
 
     /**
