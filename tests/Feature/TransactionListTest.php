@@ -58,6 +58,64 @@ it('scopes transactions to the selected account', function () {
         );
 });
 
+it('filters transactions by direction', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $statement = Statement::factory()->for($account)->create();
+
+    Transaction::factory()->for($statement)->for($account)->credit()->count(2)->create();
+    Transaction::factory()->for($statement)->for($account)->debit()->count(3)->create();
+
+    $this->actingAs($user)
+        ->get(route('transactions.index', ['direction' => 'debit']))
+        ->assertInertia(fn ($page) => $page->where('transactions.total', 3));
+});
+
+it('filters transactions by category and amount range', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $statement = Statement::factory()->for($account)->create();
+
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 50.00, 'category' => 'food']);
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 500.00, 'category' => 'food']);
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 500.00, 'category' => 'Mascotas']);
+
+    $this->actingAs($user)
+        ->get(route('transactions.index', ['category' => 'food', 'min' => 100]))
+        ->assertInertia(fn ($page) => $page->where('transactions.total', 1));
+});
+
+it('searches transactions by description, merchant or category', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $statement = Statement::factory()->for($account)->create();
+
+    Transaction::factory()->for($statement)->for($account)->create(['description' => 'AMAZON WEB SERVICES', 'merchant' => 'AWS']);
+    Transaction::factory()->for($statement)->for($account)->create(['description' => 'STARBUCKS STORE', 'merchant' => 'Starbucks']);
+
+    $this->actingAs($user)
+        ->get(route('transactions.index', ['q' => 'amazon']))
+        ->assertInertia(fn ($page) => $page->where('transactions.total', 1));
+});
+
+it('summarizes income, expenses and net for the filtered set', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $statement = Statement::factory()->for($account)->create();
+
+    Transaction::factory()->for($statement)->for($account)->credit()->create(['amount' => 1000.00]);
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 400.00]);
+
+    $this->actingAs($user)
+        ->get(route('transactions.index'))
+        ->assertInertia(fn ($page) => $page
+            ->where('summary.income', 1000)
+            ->where('summary.expense', 400)
+            ->where('summary.net', 600)
+            ->where('summary.count', 2)
+        );
+});
+
 it('requires authentication', function () {
     $this->get(route('transactions.index'))->assertRedirect(route('login'));
 });
