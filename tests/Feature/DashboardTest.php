@@ -46,9 +46,51 @@ it('defers the heavy dashboard widgets on the initial load', function () {
         ->get(route('dashboard'))
         ->assertInertia(fn ($page) => $page
             ->has('summary')
+            ->has('currentBalance')
             ->missing('monthly')
             ->missing('spendingByMerchant')
+            ->missing('spendingByCategory')
             ->missing('recentStatements')
+        );
+});
+
+it('reports the current balance from the latest statement per account', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+
+    Statement::factory()->for($account)->create([
+        'period_end' => '2025-01-31',
+        'ending_balance' => 1000.00,
+    ]);
+    Statement::factory()->for($account)->create([
+        'period_end' => '2025-02-28',
+        'ending_balance' => 1500.00,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertInertia(fn ($page) => $page->where('currentBalance', 1500));
+});
+
+it('breaks down spending by category with custom categories (deferred)', function () {
+    $user = User::factory()->create();
+    $account = Account::factory()->for($user)->create();
+    $statement = Statement::factory()->for($account)->create();
+
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 500.00, 'category' => 'food', 'date' => '2025-06-15']);
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 300.00, 'category' => 'food', 'date' => '2025-06-16']);
+    Transaction::factory()->for($statement)->for($account)->debit()->create(['amount' => 1000.00, 'category' => 'Mascotas', 'date' => '2025-06-17']);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertInertia(fn ($page) => $page
+            ->loadDeferredProps('charts', fn ($reload) => $reload
+                ->has('spendingByCategory', 2)
+                ->where('spendingByCategory.0.label', 'Mascotas')
+                ->where('spendingByCategory.0.total', 1000)
+                ->where('spendingByCategory.1.label', 'Comida')
+                ->where('spendingByCategory.1.total', 800)
+            )
         );
 });
 

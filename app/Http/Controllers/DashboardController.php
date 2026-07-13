@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TransactionCategory;
 use App\Enums\TransactionDirection;
 use App\Models\Account;
 use App\Models\Statement;
@@ -90,8 +91,10 @@ class DashboardController extends Controller
             'range' => $range,
             'summary' => $summary,
             'summaryChange' => $summaryChange,
+            'currentBalance' => $this->currentBalance($scopeIds),
             'monthly' => Inertia::defer(fn (): array => $this->monthlySeries($scopeIds, $from, $to), 'charts'),
             'spendingByMerchant' => Inertia::defer(fn (): array => $this->spendingByMerchant($scopeIds, $from, $to), 'charts'),
+            'spendingByCategory' => Inertia::defer(fn (): array => $this->spendingByCategory($scopeIds, $from, $to), 'charts'),
             'recentStatements' => Inertia::defer(fn (): array => $this->recentStatements($scopeIds, $from, $to), 'activity'),
         ]);
     }
@@ -140,6 +143,34 @@ class DashboardController extends Controller
             'expense' => $expense,
             'net' => round($income - $expense, 2),
         ];
+    }
+
+    /**
+     * The current balance: the ending balance of the most recent statement per
+     * account in scope, summed. Independent of the selected date range since it
+     * reflects the latest known balance, not the period's activity. Returns null
+     * when no statement has an ending balance yet.
+     *
+     * @param  array<int, int>  $scopeIds
+     */
+    private function currentBalance(array $scopeIds): ?float
+    {
+        if ($scopeIds === []) {
+            return null;
+        }
+
+        $latestPerAccount = Statement::query()
+            ->whereIn('account_id', $scopeIds)
+            ->whereNotNull('ending_balance')
+            ->whereNotNull('period_end')
+            ->orderBy('account_id')
+            ->orderByDesc('period_end')
+            ->orderByDesc('id')
+            ->get(['account_id', 'ending_balance'])
+            ->groupBy('account_id')
+            ->map(fn ($group): float => (float) $group->first()->ending_balance);
+
+        return $latestPerAccount->isEmpty() ? null : round($latestPerAccount->sum(), 2);
     }
 
     /**
@@ -275,6 +306,46 @@ class DashboardController extends Controller
         }, $this->monthBuckets(array_keys($byMonth)));
 
         return ['merchants' => $merchants, 'series' => $series];
+    }
+
+    /**
+     * Total expense per category within the window, ranked highest first. Custom
+     * categories the user created are kept as-is (their raw name is the label);
+     * predefined categories are localized. This is the category-aware companion
+     * to the merchant breakdown.
+     *
+     * @param  array<int, int>  $scopeIds
+     * @return array<int, array{value: string|null, label: string, total: float, count: int}>
+     */
+    private function spendingByCategory(array $scopeIds, Carbon $from, Carbon $to): array
+    {
+        $rows = Transaction::query()
+            ->whereIn('account_id', $scopeIds)
+            ->where('direction', TransactionDirection::Debit)
+            ->where('date', '>=', $from->toDateString())
+            ->where('date', '<=', $to->toDateString())
+            ->get(['amount', 'category']);
+
+        /** @var array<string, array{value: string|null, total: float, count: int}> $totals */
+        $totals = [];
+
+        foreach ($rows as $row) {
+            $key = $row->category ?? '';
+            $totals[$key] ??= ['value' => $row->category, 'total' => 0.0, 'count' => 0];
+            $totals[$key]['total'] += (float) $row->amount;
+            $totals[$key]['count']++;
+        }
+
+        $result = array_map(fn (array $entry): array => [
+            'value' => $entry['value'],
+            'label' => TransactionCategory::labelFor($entry['value']) ?? 'Sin categoría',
+            'total' => round($entry['total'], 2),
+            'count' => $entry['count'],
+        ], array_values($totals));
+
+        usort($result, fn (array $a, array $b): int => $b['total'] <=> $a['total']);
+
+        return $result;
     }
 
     /**

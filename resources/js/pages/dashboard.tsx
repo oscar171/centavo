@@ -3,11 +3,13 @@ import {
     ArrowDownRight,
     ArrowUpRight,
     FileText,
+    Landmark,
     TrendingDown,
     TrendingUp,
     Wallet,
 } from 'lucide-react';
 import StatementController from '@/actions/App/Http/Controllers/StatementController';
+import { categoryColor } from '@/components/category-badge';
 import MonthlyChart from '@/components/monthly-chart';
 import PageHeader from '@/components/page-header';
 import SpendingLineChart from '@/components/spending-line-chart';
@@ -44,6 +46,13 @@ type MonthlyPoint = {
     expense: number;
 };
 
+type CategoryTotal = {
+    value: string | null;
+    label: string;
+    total: number;
+    count: number;
+};
+
 type RecentStatement = {
     uuid: string;
     original_filename: string;
@@ -70,9 +79,11 @@ type PageProps = {
     range: string;
     summary: { income: number; expense: number; net: number };
     summaryChange: SummaryChange;
+    currentBalance: number | null;
     // Deferred props (undefined until their follow-up request resolves).
     monthly?: MonthlyPoint[];
     spendingByMerchant?: SpendingSeries;
+    spendingByCategory?: CategoryTotal[];
     recentStatements?: RecentStatement[];
 };
 
@@ -177,6 +188,62 @@ function ListSkeleton() {
     );
 }
 
+function CategoryBreakdown({
+    rows,
+    currency,
+}: {
+    rows: CategoryTotal[];
+    currency: string;
+}) {
+    const total = rows.reduce((sum, row) => sum + row.total, 0);
+
+    return (
+        <div className="space-y-4">
+            {rows.map((row) => {
+                const pct = total > 0 ? (row.total / total) * 100 : 0;
+
+                return (
+                    <div key={row.label} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="flex min-w-0 items-center gap-2">
+                                <span
+                                    className="size-2.5 shrink-0 rounded-full"
+                                    style={{
+                                        backgroundColor: categoryColor(
+                                            row.value,
+                                        ),
+                                    }}
+                                />
+                                <span className="truncate font-medium">
+                                    {row.label}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                    {row.count}
+                                </span>
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                                {formatCurrency(row.total, currency)}
+                                <span className="ml-1.5 text-xs text-muted-foreground">
+                                    {Math.round(pct)}%
+                                </span>
+                            </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                            <div
+                                className="h-full rounded-full"
+                                style={{
+                                    width: `${pct}%`,
+                                    backgroundColor: categoryColor(row.value),
+                                }}
+                            />
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function Dashboard({
     accounts,
     selectedAccount,
@@ -184,8 +251,10 @@ export default function Dashboard({
     range,
     summary,
     summaryChange,
+    currentBalance,
     monthly,
     spendingByMerchant,
+    spendingByCategory,
     recentStatements,
 }: PageProps) {
     const applyFilters = ({
@@ -307,7 +376,23 @@ export default function Dashboard({
                     ))}
                 </ToggleGroup>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <SummaryCard
+                        label="Saldo actual"
+                        value={
+                            currentBalance !== null
+                                ? formatCurrency(currentBalance, currency)
+                                : '—'
+                        }
+                        accent={
+                            currentBalance !== null && currentBalance < 0
+                                ? 'negative'
+                                : 'brand'
+                        }
+                        change={null}
+                        positiveIsGood
+                        icon={Landmark}
+                    />
                     <SummaryCard
                         label="Ingresos"
                         value={formatCurrency(summary.income, currency)}
@@ -351,6 +436,29 @@ export default function Dashboard({
                                 ) : (
                                     <MonthlyChart
                                         data={monthly ?? []}
+                                        currency={currency}
+                                    />
+                                )}
+                            </Deferred>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="space-y-3">
+                    <h2 className="text-lg font-medium">Gasto por categoría</h2>
+                    <Card>
+                        <CardContent className="py-4">
+                            <Deferred
+                                data="spendingByCategory"
+                                fallback={<ListSkeleton />}
+                            >
+                                {(spendingByCategory ?? []).length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">
+                                        Sin gastos en el periodo.
+                                    </p>
+                                ) : (
+                                    <CategoryBreakdown
+                                        rows={spendingByCategory ?? []}
                                         currency={currency}
                                     />
                                 )}
